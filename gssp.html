@@ -1,0 +1,265 @@
+﻿<!DOCTYPE html>
+<html>
+    <head>
+    <link type="image/png" rel="icon" href="//portal.gplates.org/static/img/GPlates-icon.png">
+    <meta charset="utf-8">
+    <style>
+    path {
+      stroke: blue;
+      stroke-width: 0.25px;
+      fill: grey;
+    }
+
+    circle {
+      fill: red;
+    }
+
+    svg {
+        border: solid black 1px;
+        display: block;
+        margin: 0px auto;
+        margin-bottom:20px;
+    }
+
+    .pathPoint{
+        fill: red;
+    }
+
+    .graticule {
+      fill: none;
+      stroke: #777;
+      stroke-width: .5px;
+      stroke-opacity: .5;
+    }
+
+    .RG{
+        fill: none;
+        stroke-width: 1px;
+        stroke: red;
+    }
+
+    .coastline{
+        fill-opacity: 0.5;
+    }
+
+    body {
+        font-family: Arial, Helvetica, sans-serif;
+      }
+
+    </style>
+    </head>
+<body data-view-name=points>
+    <!--<div style="width:960px; text-align: center; margin:0 auto;"><h1 id="time-label" style="font-size:3em;margin:0;">145 Ma</h1></div>-->
+	<div style="width:962px; overflow:hidden; margin:0 auto;">
+        <svg style="width:960px; height:500px;"></svg><!--960,500-->
+        <div style="text-align:center;">
+            <label>Time:</label>
+            <input id="recon-time" type="number" min="0" step="1" max="200" value="145" style="margin-right:10px;"/>
+            <input type="button" id="commit" value="Refresh Map"/>
+        </div>
+    </div>
+    <div id="geoTimeFullWidth" style="width: 962px; margin: auto; " ></div>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.2.2/jquery.min.js"></script>
+<script src="https://d3js.org/d3.v3.min.js"></script>
+<script src="https://d3js.org/topojson.v1.min.js"></script>
+<script type="module" src="../static/js/gssp/geo-timescale-master/dist/index.module.js"></script>
+<!--<script type="module" src="../static/js/gssp/geo-timescale-master/dist/index.cjs"></script>-->
+<script type="module">
+  import { geoTimescale } from "../static/js/gssp/geo-timescale-master/dist/index.module.js";
+  //import { geoTimescale } from "../static/js/gssp/geo-timescale-master/src/index.js";
+  geoTimescale("#geoTimeFullWidth");
+</script>
+
+<script>
+//设置本地路径 这里需要用google chrome extension  Web Server for chrome 设置好文件服务的路径。
+//var local_Path ="http://127.0.0.1:8887/";
+var local_Path ="./static/js/gssp/";
+var width = 960,
+    height = 500;
+
+var scale0 = (width - 1) / 2 / Math.PI;
+var eScale0 = (width - 1) / 2 / Math.PI, oScale0 = (width - 1) / 4;
+
+var projName = "orthographic";
+var geometryLayer=null, coastlinsLayer=null, graticuleLayer=null;
+
+$( document ).ready(function() {
+    var svg = d3.select("body svg");
+
+    var projOrtho = d3.geo.orthographic()
+                    .scale(oScale0)
+                    .translate([width / 2, height / 2])
+                    .clipAngle(90)
+                    .precision(.1);
+    /*var projRect = d3.geo.equirectangular()
+                    .scale(scale0)
+                    .rotate([0.1,0,0])
+                    .translate([width / 2, height / 2])
+                    .precision(.1);*/
+    var projection = projOrtho;
+
+    var path = d3.geo.path().projection(projection);
+
+    coastlinsLayer = svg.append('g');
+    geometryLayer = svg.append('g');
+    graticuleLayer = svg.append('g');
+
+    var graticule = d3.geo.graticule();
+    graticuleLayer.append("path")
+        .datum(graticule)
+        .attr("class", "graticule")
+        .attr("d", path);
+
+    var time = +$('#recon-time').val(); 
+    //转换成从本地读取地图数据加载
+    local_reconstruct(time);
+
+    var m0,
+        o0;
+
+    var drag = d3.behavior.drag()
+        .on("dragstart", function() {
+          var proj = projection.rotate();
+          m0 = [d3.event.sourceEvent.pageX, d3.event.sourceEvent.pageY];
+          o0 = [-proj[0],-proj[1]];
+        })
+        .on("drag", function() {
+            if(projName != "orthographic"){return;}
+
+            if (m0) {
+            var m1 = [d3.event.sourceEvent.pageX, d3.event.sourceEvent.pageY],
+                o1 = [o0[0] + (m0[0] - m1[0]) / 4, o0[1] + (m1[1] - m0[1]) / 4];
+            projection.rotate([-o1[0], -o1[1]]);
+                //projection.rotate([-o1[0],0]);
+            }
+
+            // Update the map
+            path = d3.geo.path().projection(projection);
+        });
+
+
+    svg.call(drag);
+    
+    setupZoom();
+
+    function setupZoom(){
+        if(projName != "orthographic"){
+            scale0 = eScale0;
+        }else{
+            scale0 = oScale0;
+        }
+        // zoom and pan
+        var zoom = d3.behavior.zoom()
+            .scale(scale0)
+            .translate([width / 2, height / 2])
+            .scaleExtent([scale0, 8 * scale0])
+            .on("zoom",function() {
+                projection
+                    .scale(zoom.scale());
+
+                if(projName != "orthographic"){
+                    projection.translate(zoom.translate());
+                }
+
+                svg.selectAll("path").attr("d", path);
+
+                if(projName != "orthographic"){
+                    geometryLayer.selectAll(".pathPoint")
+                        .attr("cx", function (d) { return projection(d)[0]; })
+                        .attr("cy", function (d) { return projection(d)[1]; })
+                }else{
+                     var circle = d3.geo.circle();
+                    geometryLayer.selectAll(".pathPoint").remove();
+                    reconstructedPoints.forEach(function(d) {
+                        drawPoint(d,scale0/zoom.scale());
+                    });
+                }
+
+          });
+
+        svg.call(zoom)
+    }
+
+var reconstructedPoints=[];
+
+function reconstruct_local_Points(time){
+    var local_url =  local_Path+"spikes/"+ time +"ma_spikes.geojson"
+    d3.json(local_url, function(error, data){
+        geometryLayer.selectAll("*").remove();
+        var circle = d3.geo.circle();
+        d3.selectAll(".pathPoint").remove();
+        reconstructedPoints=[];
+        data.coordinates.forEach(function(d) {
+            reconstructedPoints.push([d[0],d[1]]);
+            drawPoint(d);
+        });
+    });
+}
+
+function drawPoint(d, angle){
+    var _angle = angle || 1;
+    var circle = d3.geo.circle();
+    geometryLayer.append("path")
+            //.datum({type: "Point", coordinates: [d[1], d[0]]})
+            .datum(circle.origin([d[0], d[1]]).angle(_angle)())
+            .attr("d", path.pointRadius(1))
+            .attr("class","pathPoint")
+            .append("svg:title")
+                .text(function() {
+                    return "Longitude: "+d[0]+"\nLatitude: "+d[1];});
+    
+}
+
+function local_reconstruct(time){
+  local_filePath = local_Path+"coastlines/"+ time +"ma.geojson"
+  d3.json(local_filePath, function(error, topology) {
+        coastlinsLayer.selectAll(".coastline").remove();
+        coastlinsLayer.selectAll(".coastline")
+                .data(topology.features)
+            .attr("class", "coastlines")
+            .attr("d", path)
+        .enter()
+                .append("path")
+            .attr("d",path)
+                .attr("class", "coastline")
+        .on('mouseover', function(d, i) {
+            d3.select(this).style('fill-opacity', .7);
+            d3.select(this).style('stroke', 'red');
+            d3.select(this).style('stroke-width', '1px');
+        })
+
+        .on('mouseout', function(d, i) {
+            d3.select(this).style({'fill-opacity':.5});
+            d3.select(this).style('stroke', 'blue');
+            d3.select(this).style('stroke-width', '.25px');
+        });
+    });
+    reconstruct_local_Points(time);
+    
+  
+}
+
+function draw(){
+	//设置为球面展示
+	projection = projOrtho;
+	path = d3.geo.path().projection(projection);
+	svg.selectAll("path").attr("d", path);
+
+    d3.selectAll(".pathPoint").remove();
+    reconstructedPoints.forEach(function(d) {
+        drawPoint(d);        
+    });
+}
+
+d3.select('#commit').on('click', function(){
+    local_reconstruct($("#recon-time").val());
+    $("#time-label").html($("#recon-time").val()+' Ma');
+    
+});
+
+});
+</script>
+<!--<script src="../static/js/gssp/geo-timescale-master/timescale.js"></script>-->
+</body>
+</html>
+

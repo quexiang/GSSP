@@ -1,0 +1,34 @@
+{
+  "name": "@macrostrat/d3-timescale",
+  "version": "2.0.0",
+  "description": "Interactive ICS geological timescale",
+  "type": "module",
+  "source": "src/index.js",
+  "exports": "./dist/index.modern.js",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.module.js",
+  "unpkg": "./dist/index.umd.js",
+  "scripts": {
+    "build": "microbundle",
+    "dev": "microbundle watch",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "init": "eslint --init"
+  },
+  "authors": [
+    "Jules Blom",
+    "John J Czaplewski"
+  ],
+  "license": "ISC",
+  "dependencies": {
+    "@macrostrat/d3-timescale": "^2.0.0",
+    "eslint": "^7.32.0",
+    "lodash": "^4.17.21"
+  },
+  "devDependencies": {
+    "d3-hierarchy": "^3.0.1",
+    "d3-selection": "^3.0.0",
+    "d3-transition": "^3.0.1",
+    "d3-zoom": "^3.0.0",
+    "microbundle": "^0.13.3"
+  }
+}
